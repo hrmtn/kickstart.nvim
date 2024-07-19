@@ -102,7 +102,7 @@ vim.g.have_nerd_font = true
 vim.opt.number = true
 -- You can also add relative line numbers, to help with jumping.
 --  Experiment for yourself to see if you like it!
--- vim.opt.relativenumber = true
+vim.opt.relativenumber = true
 
 -- Enable mouse mode, can be useful for resizing splits for example!
 vim.opt.mouse = 'a'
@@ -160,6 +160,9 @@ vim.opt.scrolloff = 10
 -- Set highlight on search, but clear on pressing <Esc> in normal mode
 vim.opt.hlsearch = true
 vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
+
+-- disable fold on startup
+vim.opt.foldlevelstart = 99
 
 -- Diagnostic keymaps
 vim.keymap.set('n', '[d', vim.diagnostic.goto_prev, { desc = 'Go to previous [D]iagnostic message' })
@@ -229,7 +232,140 @@ require('lazy').setup({
   'tpope/vim-sleuth', -- Detect tabstop and shiftwidth automatically
   'tpope/vim-fugitive', -- Git integration
 
-  'Exafunction/codeium.vim',
+  -- 'Exafunction/codeium.vim',
+
+  {
+    'zbirenbaum/copilot.lua',
+    opts = {
+      panel = {
+        enabled = true,
+        auto_refresh = false,
+        keymap = {
+          jump_prev = "[[",
+          jump_next = "]]",
+          accept = "<CR>",
+          refresh = "gr",
+          open = "<M-CR>"
+        },
+        layout = {
+          position = "bottom", -- | top | left | right
+          ratio = 0.4
+        },
+      },
+      suggestion = {
+        enabled = true,
+        auto_trigger = true,
+        debounce = 75,
+        keymap = {
+          accept = "<Tab>",
+          accept_word = false,
+          accept_line = false,
+          next = "<M-]>",
+          prev = "<M-[>",
+          dismiss = "<C-]>",
+        },
+      },
+      filetypes = {
+        yaml = false,
+        markdown = false,
+        help = false,
+        gitcommit = false,
+        gitrebase = false,
+        hgcommit = false,
+        svn = false,
+        cvs = false,
+        ["."] = false,
+      },
+      copilot_node_command = 'node', -- Node.js version must be > 18.x
+      server_opts_overrides = {},
+    }
+  },
+
+  {
+    "jonahgoldwastaken/copilot-status.nvim",
+    dependencies = { "copilot.lua" }, -- or "zbirenbaum/copilot.lua"
+    lazy = true,
+    event = "BufReadPost",
+  },
+
+  'HiPhish/rainbow-delimiters.nvim',
+
+  { 'notjedi/nvim-rooter.lua', opts = {}, },
+
+  {
+    'stevearc/oil.nvim',
+    opts = {
+      vim.keymap.set("n", "-", "<CMD>Oil<CR>", { desc = "Open parent directory" })
+    },
+    -- Optional dependencies
+    dependencies = { "nvim-tree/nvim-web-devicons" },
+    config = function()
+      require('oil').setup({
+        skip_confirm_for_simple_edits = true,
+        delete_to_trash = true,
+        view_options = {
+          show_hidden = true,
+          natural_order = true,
+        },
+        win_options = {
+          wrap = true,
+        },
+      })
+    end,
+  },
+
+  {
+    'norcalli/nvim-colorizer.lua', opts = {
+      '*'
+    },
+  },
+
+  {
+    'kevinhwang91/nvim-ufo',
+    opts = {
+      fold_virt_text_handler = function(virtText, lnum, endLnum, width, truncate)
+        local newVirtText = {}
+        local suffix = (' 󰁂 %d '):format(endLnum - lnum)
+        local sufWidth = vim.fn.strdisplaywidth(suffix)
+        local targetWidth = width - sufWidth
+        local curWidth = 0
+        for _, chunk in ipairs(virtText) do
+          local chunkText = chunk[1]
+          local chunkWidth = vim.fn.strdisplaywidth(chunkText)
+          if targetWidth > curWidth + chunkWidth then
+            table.insert(newVirtText, chunk)
+          else
+            chunkText = truncate(chunkText, targetWidth - curWidth)
+            local hlGroup = chunk[2]
+            table.insert(newVirtText, {chunkText, hlGroup})
+            chunkWidth = vim.fn.strdisplaywidth(chunkText)
+            -- str width returned from truncate() may less than 2nd argument, need padding
+            if curWidth + chunkWidth < targetWidth then
+              suffix = suffix .. (' '):rep(targetWidth - curWidth - chunkWidth)
+            end
+            break
+          end
+          curWidth = curWidth + chunkWidth
+        end
+        table.insert(newVirtText, {suffix, 'MoreMsg'})
+        return newVirtText
+      end,
+      vim.keymap.set('n', 'zk', function()
+        local winid = require('ufo').peekFoldedLinesUnderCursor()
+        if not winid then
+          vim.lsp.buf.hover()
+        end
+      end),
+    },
+    -- Optional dependencies
+    dependencies = { "kevinhwang91/promise-async" },
+  },
+
+  -- {
+  --   'luckasRanarison/tailwind-tools.nvim',
+  --   dependencies = { 'nvim-treesitter/nvim-treesitter' },
+  --   opts = {}, -- your configuration
+  -- },
 
   -- NOTE: Plugins can also be added by using a table,
   -- with the first argument being the link and the following
@@ -365,6 +501,12 @@ require('lazy').setup({
         extensions = {
           ['ui-select'] = {
             require('telescope.themes').get_dropdown(),
+          },
+        },
+        defaults = {
+          layout_config = {
+            width = { padding = 0 },
+            height = { padding = 0 },
           },
         },
       }
@@ -642,42 +784,42 @@ require('lazy').setup({
     end,
   },
 
-  { -- Autoformat
-    'stevearc/conform.nvim',
-    lazy = false,
-    keys = {
-      {
-        '<leader>f',
-        function()
-          require('conform').format { async = true, lsp_fallback = true }
-        end,
-        mode = '',
-        desc = '[F]ormat buffer',
-      },
-    },
-    opts = {
-      notify_on_error = false,
-      format_on_save = function(bufnr)
-        -- Disable "format_on_save lsp_fallback" for languages that don't
-        -- have a well standardized coding style. You can add additional
-        -- languages here or re-enable it for the disabled ones.
-        local disable_filetypes = { c = true, cpp = true }
-        return {
-          timeout_ms = 500,
-          lsp_fallback = not disable_filetypes[vim.bo[bufnr].filetype],
-        }
-      end,
-      formatters_by_ft = {
-        lua = { 'stylua' },
-        -- Conform can also run multiple formatters sequentially
-        -- python = { "isort", "black" },
-        --
-        -- You can use a sub-list to tell conform to run *until* a formatter
-        -- is found.
-        -- javascript = { { "prettierd", "prettier" } },
-      },
-    },
-  },
+  -- { -- Autoformat
+  --   'stevearc/conform.nvim',
+  --   lazy = false,
+  --   keys = {
+  --     {
+  --       '<leader>f',
+  --       function()
+  --         require('conform').format { async = true, lsp_fallback = true }
+  --       end,
+  --       mode = '',
+  --       desc = '[F]ormat buffer',
+  --     },
+  --   },
+  --   opts = {
+  --     notify_on_error = false,
+  --     format_on_save = function(bufnr)
+  --       -- Disable "format_on_save lsp_fallback" for languages that don't
+  --       -- have a well standardized coding style. You can add additional
+  --       -- languages here or re-enable it for the disabled ones.
+  --       local disable_filetypes = { c = true, cpp = true }
+  --       return {
+  --         timeout_ms = 500,
+  --         lsp_fallback = not disable_filetypes[vim.bo[bufnr].filetype],
+  --       }
+  --     end,
+  --     formatters_by_ft = {
+  --       lua = { 'stylua' },
+  --       -- Conform can also run multiple formatters sequentially
+  --       -- python = { "isort", "black" },
+  --       --
+  --       -- You can use a sub-list to tell conform to run *until* a formatter
+  --       -- is found.
+  --       -- javascript = { { "prettierd", "prettier" } },
+  --     },
+  --   },
+  -- },
 
   { -- Autocompletion
     'hrsh7th/nvim-cmp',
@@ -796,6 +938,10 @@ require('lazy').setup({
     --
     -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
     'folke/tokyonight.nvim',
+    opts = {
+      transparent = true,
+      styles = { sidebars = "transparent", floats = "transparent", },
+    },
     priority = 1000, -- Make sure to load this before all the other start plugins.
     init = function()
       -- Load the colorscheme here.
@@ -842,7 +988,8 @@ require('lazy').setup({
       -- cursor location to LINE:COLUMN
       ---@diagnostic disable-next-line: duplicate-set-field
       statusline.section_location = function()
-        return '%2l:%-2v'
+        local copilot_status_str = require("copilot_status").status_string()
+        return '%2l:%-2v' .. ' ' .. copilot_status_str;
       end
 
       -- ... and there is more!
@@ -942,6 +1089,17 @@ require('lazy').setup({
     },
   },
 })
+
+if vim.g.neovide then
+  vim.o.guifont = "0xProto Nerd Font:h14"
+  vim.o.guifontwide = "0xProto Nerd Font:h14"
+  vim.g.neovide_transparency = 0.75
+  vim.g.neovide_window_blurred = true
+  vim.g.neovide_confirm_quit = true
+  vim.g.neovide_cursor_animation_length = 0
+end
+
+
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
